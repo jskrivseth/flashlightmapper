@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Maze Builder and Distance Mapper</title>
+    <script
+            src="https://code.jquery.com/jquery-2.2.4.min.js"
+            integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44="
+            crossorigin="anonymous"></script>
+</head>
+<body>
+
+<input name="maxDistance" id="maxDistance" placeholder="Max Distance" type="number" value="10" min="0" step="1">
+<br>
+<canvas id="myCanvas" width="1000" height="1000"></canvas>
+
+<style>
+    * { margin:0; padding:0; } /* to remove the top and left whitespace */
+    html, body { width:100%; height:100%; }
+    canvas { display:block; }
+</style>
+<script>
+    /**
+     * The grid - 1's are accessible spots, 0's are "walls"
+     * This is dynamically sized to the canvas width/height
+     * @type {*[]}
+     */
+    var grid = [];
+
+    var width = 20;
+    var height = 20;
+
+    /**
+     * Initialize an empty grid
+     * @param grid
+     * @returns {Array}
+     */
+    function zeroGrid(grid) {
+        var zeroGrid = new Array(grid.length);
+        for (var i = 0; i < grid.length; i++) {
+            zeroGrid[i] = new Array(grid[i].length);
+        }
+        return zeroGrid;
+    }
+
+    /**
+     * Check if the given point is within the bounds of the grid
+     * @param point
+     * @returns {boolean}
+     */
+    function isOnGrid(point) {
+        return point.x in grid && point.y in grid[point.x];
+    }
+
+    /**
+     * determine whether the point in question is accessible (1) or a "wall" (0)
+     * @param point
+     * @returns {boolean}
+     */
+    function isAccessible(point) {
+        return isOnGrid(point) && grid[point.x][point.y] > 0;
+    }
+
+    /**
+     * Determine whether we already computed the distance for this point
+     * if the point in the distanceGrid is undefined, we haven't set a value there so distance is unknown
+     * @param distanceGrid
+     * @param point
+     * @returns {boolean}
+     */
+    function isDistanceUnknown(distanceGrid, point) {
+        return distanceGrid[point.x][point.y] == undefined;
+    }
+
+    /**
+     * Compute the distances to all reachable grid elements from a given x,y
+     * @param grid
+     * @param x
+     * @param y
+     * @returns {Array}
+     */
+    function computeDistance(grid, startingPoint, maxDistance) {
+        //duplicate the grid as zeros - we use this to generate a distance map
+        var distanceMap = zeroGrid(grid);
+
+        //the current distance from the starting point
+        var distance = 0;
+
+        //a list of neighbor points to track - we will use this as a queue that we flush at each pass
+        var neighbors = [];
+
+        //Add the origin as a starting point.
+        neighbors.push(startingPoint);
+
+        //init the starting point as distance zero
+        distanceMap[startingPoint.x][startingPoint.y] = 0;
+
+        //start at origin and look around at all neighbors
+        while (neighbors.length > 0 && distance < maxDistance) {
+            //copy the neighbors out of the "queue" from the last iteration
+            var theseNeighbors = neighbors;
+            //empty the current list of neighbors - we're going to search for more
+            neighbors = [];
+            //for every neighbor we saw last time
+            for (var i in theseNeighbors) {
+                var thisPoint = theseNeighbors[i];
+                //create points for all directions in order to test them
+                var testPoints = {
+                    up: {x: thisPoint.x, y: thisPoint.y - 1},
+                    down: {x: thisPoint.x, y: thisPoint.y + 1},
+                    left: {x: thisPoint.x - 1, y: thisPoint.y},
+                    right: {x: thisPoint.x + 1, y: thisPoint.y}
+                };
+                //foreach point
+                for (var j in testPoints) {
+                    var testPoint = testPoints[j];
+                    //check if the point is accessible and whether we've already evaluated that point
+                    if (isAccessible(testPoint) && isDistanceUnknown(distanceMap, testPoint)) {
+                        //since we can move this direction, add the point to the neighbors list to evaluate it on the next iteration
+                        neighbors.push(testPoint);
+                        //store the distance in the distance map
+                        distanceMap[testPoint.x][testPoint.y] = distance + 1;
+                    }
+                }
+            }
+            //increment the total distance travelled so far
+            distance++;
+        }
+        return distanceMap;
+    }
+
+    function computeMap(startingPoint, maxDistance) {
+        console.time('compute');
+        var distanceMap = computeDistance(grid, startingPoint, maxDistance);
+        console.timeEnd('compute');
+        return distanceMap;
+    }
+
+    function drawDistanceMap(distanceMap) {
+        var canvas = document.getElementById('myCanvas');
+        var context = canvas.getContext('2d');
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        for (var row in distanceMap) {
+            for (var col in distanceMap) {
+                if (distanceMap[row][col] != undefined) {
+                    var pos = {x: row * width, y: col * height};
+                    var value = distanceMap[row][col];
+                    context.save();
+
+                    context.beginPath();
+                    if (value > 0) {
+                        var colorFade = Math.max((255-value * 10), 64);
+                        context.fillStyle = 'rgba('+colorFade+','+colorFade+',0,1)';
+                    } else {
+                        context.fillStyle = 'rgba(255,0,0,1)';
+                    }
+                    context.strokeStyle = 'black';
+                    context.font = "10px arial";
+                    context.rect(pos.x, pos.y, width, height);
+                    context.fill();
+                    context.strokeText(value, pos.x + 2, pos.y + height - 3);
+                    context.lineWidth = 1;
+                    context.stroke();
+                    context.restore();
+                }
+            }
+        }
+    }
+
+    var lastOrigin = {x: 0, y:0};
+
+    //draw the map when the mouse moves, if it moved far enough
+    $('#myCanvas').on('mousemove', function (e) {
+        var pos = getMousePos(this, e);
+        x1 = Math.floor(pos.x / width);
+        y1 = Math.floor(pos.y / height);
+        if (lastOrigin.x != x1 || lastOrigin.y != y1) {
+            var distanceMap = computeMap({x: x1, y: y1}, $('#maxDistance').val());
+            drawDistanceMap(distanceMap);
+            lastOrigin.x = x1;
+            lastOrigin.y = y1;
+        }
+    });
+
+
+    //suppress right click context menu
+    $('#myCanvas').bind('contextmenu', function(e){
+        return false;
+    });
+
+    //handle mouse clicks
+    $('#myCanvas').on('mousedown', function (e) {
+        var pos = getMousePos(this, e);
+        x1 = Math.floor(pos.x / width);
+        y1 = Math.floor(pos.y / height);
+        switch (e.which) {
+            case 1:
+                grid[x1][y1] = 1;
+                break;
+            case 3:
+                grid[x1][y1] = 0;
+                break;
+            default:
+                alert('You have a strange Mouse!');
+        }
+        var distanceMap = computeMap({x: x1, y: y1}, $('#maxDistance').val());
+        drawDistanceMap(distanceMap);
+    });
+
+
+    function getMousePos(canvas, evt) {
+        var rect = canvas.getBoundingClientRect();
+        return {
+            x: evt.clientX - rect.left,
+            y: evt.clientY - rect.top
+        };
+    }
+
+
+    //resize the canvas to match the window
+    (function() {
+        var canvas = document.getElementById('myCanvas'),
+            context = canvas.getContext('2d');
+
+        // resize the canvas to fill browser window dynamically
+        window.addEventListener('resize', resizeCanvas, false);
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            /**
+             * Your drawings need to be inside this function otherwise they will be reset when
+             * you resize the browser window and the canvas goes will be cleared.
+             */
+            draw();
+        }
+        resizeCanvas();
+
+
+        function draw() {
+            //expand the grid, if needed, to fill the canvas size
+            var gridWidth = Math.floor(canvas.width / width);
+            var gridHeight = Math.floor(canvas.height / height);
+            for (var i = 0; i < gridWidth; i++) {
+                for (var j = 0; j < gridHeight; j++) {
+                    if (i in grid && j in grid[i]) {
+                        //do nothing - this already exists
+                    } else if (i in grid) {
+                        grid[i][j] = 1;  //row already exists, just add the element
+                    } else {
+                        //row doesn't exist, add it and set the value
+                        grid[i] = [];
+                        grid[i][j] = 1;
+                    }
+                }
+            }
+        }
+    })();
+</script>
+</body>
+</html>
