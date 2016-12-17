@@ -10,7 +10,13 @@
 </head>
 <body>
 
-<input name="maxDistance" id="maxDistance" placeholder="Max Distance" type="number" value="20" min="0" step="1">
+<div>
+    <ul>
+        <li>Mouse wheel to change distance</li>
+        <li>Left click to place a block, right click to remove one</li>
+    </ul>
+</div>
+<input hidden name="maxDistance" id="maxDistance" placeholder="Max Distance" type="number" value="20" min="0" step="1">
 
 <br>
 <canvas id="myCanvas" width="1000" height="1000"></canvas>
@@ -274,6 +280,24 @@
 
     //suppress right click context menu
     $('#myCanvas').bind('contextmenu', function (e) {
+        return false;
+    });
+
+    //Use mouse wheel to change distance
+    $('#myCanvas').bind('mousewheel', function(e){
+        var curDistance = parseInt($('#maxDistance').val());
+        if (Math.abs(e.originalEvent.wheelDelta / 120)) {
+            if (e.originalEvent.wheelDelta / 120 > 0) {
+                console.log('scrolling up !');
+                $('#maxDistance').val(Math.max(1,curDistance - 1));
+            }
+            else {
+                console.log('scrolling down !');
+                $('#maxDistance').val(curDistance + 1);
+            }
+            var distanceMap = computeMap({x: x1, y: y1}, $('#maxDistance').val());
+            drawDistanceMap(distanceMap);
+        }
         return false;
     });
 
